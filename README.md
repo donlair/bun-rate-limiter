@@ -194,6 +194,23 @@ queue.on('error', (error) => console.error('Error:', error));
 
 ### Custom Throttlers
 
+#### Built-in throttlers (what they do)
+
+This library ships with a few built-in throttling strategies. Each one answers the question: “How long should we wait before starting the next job?”
+
+- **`SpacingThrottler(minDelayMs)`**: enforces a minimum delay between job starts (anti-burst pacing).
+  - Good for APIs that require “at least X ms between requests”.
+  - Note: `RateLimiter({ requestDelay })` is just a convenience that internally adds a `SpacingThrottler(requestDelay)`.
+
+- **`IntervalThrottler({ limit, interval })`**: caps the number of job starts in a moving time window (e.g. “no more than 10 per second”).
+  - Good for hard “N requests per interval” limits.
+
+- **`TokenBucketThrottler({ capacity, refillAmount, refillInterval })`**: allows bursts up to `capacity`, then refills over time.
+  - Good when you want “burst + steady state” behavior (smoother than a hard window).
+
+- **`RedisTokenBucketThrottler(...)`** (async throttler): like `TokenBucketThrottler`, but coordinated via Redis for distributed rate limiting.
+  - Good when you have multiple Bun processes/servers that must share a global/per-key limit.
+
 Use the built-in `IntervalThrottler` for rate limiting (e.g., 10 requests per second):
 
 ```typescript
@@ -254,6 +271,14 @@ const queue = new RateLimiter({
   ],
 });
 ```
+
+#### Composition patterns (why you might do this)
+
+- **Anti-burst pacing only** (simple “don’t spike”): use `requestDelay` or `SpacingThrottler`.
+- **Hard cap only** (“N per interval”): use `IntervalThrottler`.
+- **Burst + steady state** (“allow bursts, then smooth out”): use `TokenBucketThrottler`.
+- **Hard cap + pacing** (common for flaky APIs): combine `IntervalThrottler` + `SpacingThrottler` so you avoid bursts *and* respect a strict maximum.
+- **Distributed limits**: add one or more `asyncThrottlers` (e.g. Redis token bucket) so multiple processes share the same limit; you can still combine with local sync throttlers for extra smoothing.
 
 Note: a throttler that always returns a positive delay (or a very large delay) can effectively stall the queue.
 

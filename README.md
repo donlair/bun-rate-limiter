@@ -286,6 +286,55 @@ Note: a throttler that always returns a positive delay (or a very large delay) c
 
 For distributed rate limiting across multiple processes/servers, use `asyncThrottlers`.
 
+Prerequisites:
+- A running Redis instance
+- Bun `>= 1.3.0` (for Bun’s `RedisClient`)
+
+#### Global “requestDelay” (minimum spacing) with Redis
+
+`requestDelay` / `SpacingThrottler` is per-process. If you need a true global minimum delay between starts across multiple processes, use `RedisSpacingThrottler`:
+
+```typescript
+import { RedisClient } from 'bun';
+import { RateLimiter, RedisSpacingThrottler } from 'bun-rate-limiter';
+
+const redis = new RedisClient(process.env.REDIS_URL);
+await redis.connect();
+
+const queue = new RateLimiter({
+  concurrency: 50,
+  asyncThrottlers: [new RedisSpacingThrottler({ redis, minDelayMs: 3 })],
+});
+
+await queue.add(async () => fetch(url), { rateLimitKey: 'global' });
+```
+
+#### Combining global spacing + global limit
+
+To enforce both “at least 3ms between starts” and “<= 2000 per minute” globally, compose two async throttlers:
+
+```typescript
+import { RedisClient } from 'bun';
+import { RateLimiter, RedisSpacingThrottler, RedisTokenBucketThrottler } from 'bun-rate-limiter';
+
+const redis = new RedisClient(process.env.REDIS_URL);
+await redis.connect();
+
+const queue = new RateLimiter({
+  concurrency: 50,
+  asyncThrottlers: [
+    new RedisSpacingThrottler({ redis, minDelayMs: 3 }),
+    new RedisTokenBucketThrottler({
+      redis,
+      keyPrefix: 'myapp:rl:',
+      capacity: 2000,
+      refillAmount: 2000,
+      refillInterval: 60_000,
+    }),
+  ],
+});
+```
+
 Example: Redis token bucket with per-user keys:
 
 ```typescript
@@ -315,6 +364,7 @@ Notes:
 - `rateLimitKey` controls the “bucket” a task consumes from (per-user, per-org, global, etc).
 - `asyncThrottlers` are composable; delays are combined by taking the maximum, same as sync throttlers.
 - To explicitly reset distributed throttler state (without clearing pending tasks): `await queue.resetAsyncThrottlers()`.
+- Example code you can run locally: `examples/simple-redis-token-bucket.ts` or `examples/monorepo/README.md`.
 
 ### Using ArrayQueue (FIFO)
 

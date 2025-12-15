@@ -1,0 +1,11 @@
+{
+  "name": "@demo/shared-limiter",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "bun-rate-limiter": "file:../../../.."
+  }
+}

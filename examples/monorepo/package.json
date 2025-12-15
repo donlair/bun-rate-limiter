@@ -1,0 +1,13 @@
+{
+  "name": "bun-rate-limiter-demo",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "redis:up": "docker compose up -d",
+    "redis:down": "docker compose down -v",
+    "demo:api": "bun run apps/api/src/index.ts",
+    "demo:client-a": "bun run apps/client-a/src/index.ts",
+    "demo:client-b": "bun run apps/client-b/src/index.ts",
+    "test": "bun test demo-tests"
+  }
+}

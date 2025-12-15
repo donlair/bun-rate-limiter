@@ -1,0 +1,12 @@
+{
+  "name": "@demo/client-a",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@demo/shared-limiter": "workspace:*"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts"
+  }
+}
+

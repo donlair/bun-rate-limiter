@@ -33,6 +33,10 @@ export {
 export type { IThrottler } from './strategies/throttle/IThrottler';
 export type { IRedisClient } from './strategies/throttle/redis/IRedisClient';
 export {
+  RedisSpacingThrottler,
+  type RedisSpacingThrottlerOptions,
+} from './strategies/throttle/redis/RedisSpacingThrottler';
+export {
   RedisTokenBucketThrottler,
   type RedisTokenBucketThrottlerOptions,
 } from './strategies/throttle/redis/RedisTokenBucketThrottler';

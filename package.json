@@ -1,7 +1,7 @@
 {
   "name": "bun-rate-limiter",
   "version": "0.1.1",
-  "description": "A modern, modular rate limiter and concurrency queue built for Bun",
+  "description": "A modern, modular rate limiter and concurrency queue. Built with Bun, runs anywhere—Node.js 18+, Vercel, AWS Lambda, and more.",
   "keywords": [
     "queue",
     "concurrency",
@@ -9,7 +9,14 @@
     "throttle",
     "async",
     "promise",
-    "bun"
+    "bun",
+    "node",
+    "nodejs",
+    "vercel",
+    "serverless",
+    "lambda",
+    "redis",
+    "distributed"
   ],
   "type": "module",
   "license": "MIT",
@@ -23,7 +30,8 @@
   },
   "homepage": "https://github.com/donlair/bun-rate-limiter#readme",
   "engines": {
-    "bun": ">=1.3.0"
+    "bun": ">=1.3.0",
+    "node": ">=18.0.0"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -48,8 +56,8 @@
     "build": "bun run build:types && bun run build:types:rewrite && bun run build:esm && bun run build:cjs",
     "build:types": "tsc -p tsconfig.build.json --declaration --emitDeclarationOnly --outDir dist",
     "build:types:rewrite": "bun run scripts/rewrite-dts-imports.ts",
-    "build:esm": "bun build src/index.ts --outdir dist --target bun --format esm",
-    "build:cjs": "bun build src/index.ts --outfile dist/index.cjs --target bun --format cjs",
+    "build:esm": "bun build src/index.ts --outdir dist --target node --format esm",
+    "build:cjs": "bun build src/index.ts --outfile dist/index.cjs --target node --format cjs",
     "test": "bun test ./tests",
     "test:watch": "bun test --watch ./tests",
     "test:coverage": "bun test --coverage ./tests",

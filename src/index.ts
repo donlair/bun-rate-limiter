@@ -1,13 +1,14 @@
 import { EventBus } from './core/EventBus';
 import { Job } from './core/Job';
+import { buildAsyncThrottlersFromLimits, buildThrottlersFromLimits } from './core/limits';
 import type { RateLimiterEvents, RateLimiterOptions, Task, TaskOptions } from './core/types';
 import { StandardScheduler } from './scheduler/StandardScheduler';
 import { PriorityQueue } from './strategies/queue/PriorityQueue';
-import { SpacingThrottler } from './strategies/throttle/SpacingThrottler';
 
 export { EventBus } from './core/EventBus';
 export { TimeoutError } from './core/errors';
 export { Job, type JobOptions } from './core/Job';
+export type { BackendOptions, RateLimiterLimits } from './core/limits';
 export type {
   JobStatus,
   RateLimiterEvents,
@@ -46,12 +47,48 @@ export {
   type TokenBucketThrottlerOptions,
 } from './strategies/throttle/TokenBucketThrottler';
 
+function resolveThrottling(options: RateLimiterOptions): {
+  throttlers: import('./strategies/throttle/IThrottler').IThrottler[];
+  asyncThrottlers: import('./strategies/throttle/IAsyncThrottler').IAsyncThrottler[];
+} {
+  const limits = options.limits;
+  const backend = options.backend;
+  const compose = options.compose ?? false;
+  const manualThrottlers = options.throttlers ?? [];
+  const manualAsyncThrottlers = options.asyncThrottlers ?? [];
+
+  const hasManual = manualThrottlers.length > 0 || manualAsyncThrottlers.length > 0;
+  const hasLimits = Boolean(limits);
+
+  if (hasManual && hasLimits && !compose) {
+    throw new Error('RateLimiter: set compose=true to combine limits with manual throttlers');
+  }
+
+  // When Redis backend is present, limits are enforced via async throttlers only (not both)
+  const derivedThrottlers =
+    limits && backend?.type !== 'redis' ? buildThrottlersFromLimits(limits) : [];
+  const derivedAsyncThrottlers =
+    limits && backend?.type === 'redis' ? buildAsyncThrottlersFromLimits(limits, backend) : [];
+
+  if (hasManual && !compose) {
+    return { throttlers: manualThrottlers, asyncThrottlers: manualAsyncThrottlers };
+  }
+
+  return {
+    throttlers: [...derivedThrottlers, ...manualThrottlers],
+    asyncThrottlers: [...derivedAsyncThrottlers, ...manualAsyncThrottlers],
+  };
+}
+
 /**
  * RateLimiter - A modern, modular concurrency queue for Bun.
  *
  * @example
  * ```typescript
- * const queue = new RateLimiter({ concurrency: 5, requestDelay: 100 });
+ * const queue = new RateLimiter({
+ *   concurrency: 5,
+ *   limits: { minDelayMs: 100 },
+ * });
  *
  * const result = await queue.add(async () => {
  *   return await fetch('https://api.example.com/data');
@@ -62,17 +99,12 @@ export class RateLimiter {
   private readonly scheduler: StandardScheduler;
   private readonly events: EventBus<RateLimiterEvents>;
   private readonly defaultTimeout?: number;
+  private readonly defaultRateLimitKey?: string;
 
   constructor(options: RateLimiterOptions = {}) {
-    const {
-      concurrency = 1,
-      requestDelay = 0,
-      autoStart = true,
-      timeout,
-      throttlers = [],
-      asyncThrottlers = [],
-    } = options;
+    const { concurrency = 1, autoStart = true, timeout, defaultRateLimitKey } = options;
     this.defaultTimeout = timeout;
+    this.defaultRateLimitKey = defaultRateLimitKey;
 
     // Create event bus
     this.events = new EventBus();
@@ -80,14 +112,10 @@ export class RateLimiter {
     // Create priority queue for jobs (higher priority first)
     const queue = new PriorityQueue<Job<unknown>>((a, b) => a.priority - b.priority);
 
-    // Create throttler if requestDelay is specified
-    const requestDelayThrottler = requestDelay > 0 ? new SpacingThrottler(requestDelay) : null;
-    const allThrottlers = requestDelayThrottler
-      ? [...throttlers, requestDelayThrottler]
-      : throttlers;
+    const { throttlers, asyncThrottlers } = resolveThrottling(options);
 
     // Create scheduler
-    this.scheduler = new StandardScheduler(queue, allThrottlers, {
+    this.scheduler = new StandardScheduler(queue, throttlers, {
       concurrency,
       autoStart,
       asyncThrottlers,
@@ -152,7 +180,7 @@ export class RateLimiter {
   add<T>(fn: Task<T>, options: TaskOptions = {}): Promise<T> {
     const job = new Job(fn, {
       priority: options.priority ?? 0,
-      rateLimitKey: options.rateLimitKey,
+      rateLimitKey: options.rateLimitKey ?? this.defaultRateLimitKey,
       signal: options.signal,
       timeout: options.timeout ?? this.defaultTimeout,
     });

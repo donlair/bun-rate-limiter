@@ -1,5 +1,5 @@
 import { RedisClient } from 'bun';
-import { RateLimiter, RedisSpacingThrottler, RedisTokenBucketThrottler } from 'bun-rate-limiter';
+import { RateLimiter } from 'bun-rate-limiter';
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -15,18 +15,11 @@ await redis.connect();
 try {
   const limiter = new RateLimiter({
     concurrency: 50,
-    asyncThrottlers: [
-      // Global min spacing between starts (shared across processes).
-      new RedisSpacingThrottler({ redis, minDelayMs: 50 }),
-      // Global burst + refill.
-      new RedisTokenBucketThrottler({
-        redis,
-        keyPrefix: 'example:bun-rate-limiter:',
-        capacity: 5,
-        refillAmount: 5,
-        refillInterval: 1000,
-      }),
-    ],
+    backend: { type: 'redis', redis, keyPrefix: 'example:bun-rate-limiter' },
+    limits: {
+      minDelayMs: 50,
+      tokenBucket: { capacity: 5, refillAmount: 5, refillInterval: 1000 },
+    },
   });
 
   const startedAt = Date.now();
@@ -43,4 +36,3 @@ try {
 } finally {
   redis.close();
 }
-

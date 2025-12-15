@@ -1,5 +1,5 @@
 import { RedisClient } from 'bun';
-import { RateLimiter, RedisSpacingThrottler, RedisTokenBucketThrottler } from 'bun-rate-limiter';
+import { RateLimiter } from 'bun-rate-limiter';
 
 export interface SharedLimiterOptions {
   redisUrl: string;
@@ -23,20 +23,11 @@ export async function createSharedLimiter(options: SharedLimiterOptions): Promis
 
   const limiter = new RateLimiter({
     concurrency: 100,
-    asyncThrottlers: [
-      new RedisSpacingThrottler({
-        redis,
-        keyPrefix: 'demo:spacing:',
-        minDelayMs: 2,
-      }),
-      new RedisTokenBucketThrottler({
-        redis,
-        keyPrefix: 'demo:bucket:',
-        capacity: 20,
-        refillAmount: 20,
-        refillInterval: 1000,
-      }),
-    ],
+    backend: { type: 'redis', redis, keyPrefix: 'demo' },
+    limits: {
+      minDelayMs: 2,
+      tokenBucket: { capacity: 20, refillAmount: 20, refillInterval: 1000 },
+    },
   });
 
   return {
@@ -44,4 +35,3 @@ export async function createSharedLimiter(options: SharedLimiterOptions): Promis
     close: () => redis.close(),
   };
 }
-

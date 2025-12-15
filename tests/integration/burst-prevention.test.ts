@@ -95,9 +95,9 @@ describe('RateLimiter Integration', () => {
     });
   });
 
-  describe('burst prevention (requestDelay)', () => {
+  describe('burst prevention (limits.minDelayMs)', () => {
     test('enforces minimum delay between task starts', async () => {
-      const queue = new RateLimiter({ concurrency: 5, requestDelay: 50 });
+      const queue = new RateLimiter({ concurrency: 5, limits: { minDelayMs: 50 } });
 
       const startTimes: number[] = [];
       const start = Date.now();
@@ -123,7 +123,7 @@ describe('RateLimiter Integration', () => {
     });
 
     test('pacing works with high concurrency', async () => {
-      const queue = new RateLimiter({ concurrency: 10, requestDelay: 30 });
+      const queue = new RateLimiter({ concurrency: 10, limits: { minDelayMs: 30 } });
 
       const startTimes: number[] = [];
       const start = Date.now();
@@ -148,7 +148,7 @@ describe('RateLimiter Integration', () => {
     });
 
     test('paces a burst, respects concurrency, and does not start early when a task finishes fast', async () => {
-      const queue = new RateLimiter({ concurrency: 5, requestDelay: 100 });
+      const queue = new RateLimiter({ concurrency: 5, limits: { minDelayMs: 100 } });
 
       const start = Date.now();
       const startById: number[] = [];
@@ -180,7 +180,7 @@ describe('RateLimiter Integration', () => {
         expect(gap).toBeGreaterThanOrEqual(90);
       }
 
-      // In particular, task 2 should not start until requestDelay has elapsed since task 1 started.
+      // In particular, task 2 should not start until minDelayMs has elapsed since task 1 started.
       // biome-ignore lint/style/noNonNullAssertion: ids 1 and 2 are always present
       expect(startById[2]! - startById[1]!).toBeGreaterThanOrEqual(90);
 
@@ -474,7 +474,7 @@ describe('RateLimiter Integration', () => {
 
   describe('smoke test', () => {
     test('handles 10 tasks with pacing', async () => {
-      const queue = new RateLimiter({ concurrency: 5, requestDelay: 50 });
+      const queue = new RateLimiter({ concurrency: 5, limits: { minDelayMs: 50 } });
 
       const start = Date.now();
 
@@ -492,21 +492,21 @@ describe('RateLimiter Integration', () => {
   });
 
   describe('isRateLimited and isSaturated', () => {
-    test('isRateLimited is false when no requestDelay configured', () => {
+    test('isRateLimited is false when no minDelayMs configured', () => {
       const queue = new RateLimiter({ concurrency: 5 });
 
       expect(queue.isRateLimited).toBe(false);
     });
 
-    test('isRateLimited is false initially with requestDelay (no jobs run yet)', () => {
-      const queue = new RateLimiter({ concurrency: 5, requestDelay: 100 });
+    test('isRateLimited is false initially with minDelayMs (no jobs run yet)', () => {
+      const queue = new RateLimiter({ concurrency: 5, limits: { minDelayMs: 100 } });
 
       // Before any job starts, SpacingThrottler reports 0 delay
       expect(queue.isRateLimited).toBe(false);
     });
 
-    test('isRateLimited is true after task starts with requestDelay', async () => {
-      const queue = new RateLimiter({ concurrency: 5, requestDelay: 100 });
+    test('isRateLimited is true after task starts with minDelayMs', async () => {
+      const queue = new RateLimiter({ concurrency: 5, limits: { minDelayMs: 100 } });
 
       // Run a quick task to trigger throttler
       await queue.add(async () => 'done');
@@ -516,7 +516,7 @@ describe('RateLimiter Integration', () => {
     });
 
     test('isRateLimited becomes false after delay elapses', async () => {
-      const queue = new RateLimiter({ concurrency: 5, requestDelay: 30 });
+      const queue = new RateLimiter({ concurrency: 5, limits: { minDelayMs: 30 } });
 
       await queue.add(async () => 'done');
 
@@ -559,7 +559,7 @@ describe('RateLimiter Integration', () => {
     });
 
     test('isSaturated is true when rate limited (even with slots available)', async () => {
-      const queue = new RateLimiter({ concurrency: 10, requestDelay: 100 });
+      const queue = new RateLimiter({ concurrency: 10, limits: { minDelayMs: 100 } });
 
       // Run a quick task
       await queue.add(async () => 'done');
@@ -574,7 +574,7 @@ describe('RateLimiter Integration', () => {
     });
 
     test('isSaturated reflects both concurrency and rate limit', async () => {
-      const queue = new RateLimiter({ concurrency: 1, requestDelay: 50 });
+      const queue = new RateLimiter({ concurrency: 1, limits: { minDelayMs: 50 } });
 
       // Start a longer task
       const p1 = queue.add(async () => {
@@ -593,7 +593,7 @@ describe('RateLimiter Integration', () => {
     });
 
     test('isSaturated becomes false when job completes and not rate limited', async () => {
-      const queue = new RateLimiter({ concurrency: 1 }); // No requestDelay
+      const queue = new RateLimiter({ concurrency: 1 }); // No minDelayMs
 
       const p = queue.add(async () => {
         await new Promise((resolve) => setTimeout(resolve, 30));

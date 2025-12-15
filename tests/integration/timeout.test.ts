@@ -155,7 +155,7 @@ describe('RateLimiter Timeout Integration', () => {
     test('timeout starts when task executes not when queued', async () => {
       const queue = new RateLimiter({
         concurrency: 1,
-        requestDelay: 100, // 100ms between task starts
+        limits: { minDelayMs: 100 }, // 100ms between task starts
       });
 
       // First task: takes 50ms

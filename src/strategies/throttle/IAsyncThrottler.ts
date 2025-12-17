@@ -8,6 +8,10 @@ export interface ThrottlePermit {
   release(): Promise<void>;
 }
 
+/**
+ * Result of attempting to acquire a throttle permit.
+ * Either granted with an optional permit to release, or denied with a delay until retry.
+ */
 export type AcquireResult =
   | { granted: true; permit?: ThrottlePermit }
   | { granted: false; delayMs: number };

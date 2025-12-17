@@ -7,14 +7,25 @@ import { RedisTokenBucketThrottler } from '../strategies/throttle/redis/RedisTok
 import { SpacingThrottler } from '../strategies/throttle/SpacingThrottler';
 import { TokenBucketThrottler } from '../strategies/throttle/TokenBucketThrottler';
 
+/**
+ * Token bucket algorithm configuration for rate limiting.
+ */
 export interface TokenBucketLimits {
+  /** Maximum number of tokens in the bucket */
   capacity: number;
+  /** Number of tokens to add per refill interval */
   refillAmount: number;
+  /** Time in milliseconds between token refills */
   refillInterval: number;
 }
 
+/**
+ * Interval-based rate limiting configuration.
+ */
 export interface IntervalLimits {
+  /** Maximum number of operations allowed per interval */
   limit: number;
+  /** Time window in milliseconds */
   interval: number;
 }
 
@@ -34,8 +45,12 @@ export type RateLimiterLimits =
       tokenBucket?: never;
     };
 
+/**
+ * Redis backend configuration for distributed rate limiting.
+ */
 export interface RedisBackendOptions {
   type: 'redis';
+  /** Redis client instance compatible with IRedisClient interface */
   redis: IRedisClient;
   /**
    * Base prefix for Redis keys used by this limiter.
@@ -46,6 +61,9 @@ export interface RedisBackendOptions {
   defaultKey?: string;
 }
 
+/**
+ * Union type for all supported backend options.
+ */
 export type BackendOptions = RedisBackendOptions;
 
 function normalizePrefix(prefix: string): string {
@@ -55,6 +73,13 @@ function normalizePrefix(prefix: string): string {
   return prefix.endsWith(':') ? prefix : `${prefix}:`;
 }
 
+/**
+ * Builds synchronous throttlers from rate limit configuration.
+ * Used for local in-process rate limiting.
+ *
+ * @param limits - Rate limiter configuration
+ * @returns Array of instantiated throttlers
+ */
 export function buildThrottlersFromLimits(limits: RateLimiterLimits): IThrottler[] {
   const throttlers: IThrottler[] = [];
   const minDelayMs = limits.minDelayMs ?? 0;
@@ -71,6 +96,15 @@ export function buildThrottlersFromLimits(limits: RateLimiterLimits): IThrottler
   return throttlers;
 }
 
+/**
+ * Builds asynchronous throttlers from rate limit configuration and Redis backend.
+ * Used for distributed rate limiting across multiple processes.
+ *
+ * @param limits - Rate limiter configuration
+ * @param backend - Redis backend configuration
+ * @returns Array of instantiated async throttlers
+ * @throws Error if interval limits are specified (not supported with Redis backend)
+ */
 export function buildAsyncThrottlersFromLimits(
   limits: RateLimiterLimits,
   backend: RedisBackendOptions,

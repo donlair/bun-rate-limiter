@@ -25,6 +25,11 @@ export interface RedisTokenBucketThrottlerOptions {
   keyFn?: (context: AcquireContext) => string | undefined;
 }
 
+/**
+ * Lua script that attempts to acquire a token from the token bucket.
+ * Returns [1, 0] if granted, or [0, delayMs] if insufficient tokens are available.
+ * The script refills tokens based on elapsed time since the last update.
+ */
 const ACQUIRE_SCRIPT = `
 local key = KEYS[1]
 local capacity = tonumber(ARGV[1])
@@ -69,6 +74,10 @@ else
 end
 `;
 
+/**
+ * Lua script that releases a token back to the bucket.
+ * Returns 1 on success. The script adds the cost back to the token count.
+ */
 const RELEASE_SCRIPT = `
 local key = KEYS[1]
 local capacity = tonumber(ARGV[1])
@@ -104,6 +113,10 @@ redis.call('PEXPIRE', key, ttlMs)
 return 1
 `;
 
+/**
+ * Redis-backed token bucket throttler for distributed rate limiting.
+ * Tokens refill continuously at a configured rate, up to a maximum capacity.
+ */
 export class RedisTokenBucketThrottler implements IAsyncThrottler {
   private readonly redis: IRedisClient;
   private readonly keyPrefix: string;
@@ -134,6 +147,12 @@ export class RedisTokenBucketThrottler implements IAsyncThrottler {
     this.keyFn = options.keyFn;
   }
 
+  /**
+   * Attempts to acquire a token from the bucket.
+   *
+   * @param context - The acquire context containing job and key information
+   * @returns Promise resolving to an acquire result indicating whether a token was acquired
+   */
   async acquire(context: AcquireContext): Promise<AcquireResult> {
     const resolvedKey =
       this.keyFn?.(context) ?? context.key ?? context.job.rateLimitKey ?? this.defaultKey;
@@ -161,6 +180,14 @@ export class RedisTokenBucketThrottler implements IAsyncThrottler {
     return { granted: true, permit };
   }
 
+  /**
+   * Creates a throttle permit that can release a token back to the bucket.
+   *
+   * @param redisKey - The Redis key for this bucket
+   * @param cost - The cost (number of tokens) to refund on release
+   * @param ttlMs - The TTL for the Redis key
+   * @returns A throttle permit with a release method
+   */
   private createPermit(redisKey: string, cost: number, ttlMs: number): ThrottlePermit {
     let released = false;
 
@@ -184,6 +211,12 @@ export class RedisTokenBucketThrottler implements IAsyncThrottler {
     };
   }
 
+  /**
+   * Parses the Redis EVAL result from the acquire script.
+   *
+   * @param result - The raw result from Redis EVAL command
+   * @returns Parsed acquire result with grant status and optional delay
+   */
   private parseResult(result: unknown): AcquireResult {
     if (!Array.isArray(result) || result.length < 2) {
       throw new TypeError('RedisTokenBucketThrottler: expected [granted, delayMs] array from EVAL');
@@ -202,10 +235,13 @@ export class RedisTokenBucketThrottler implements IAsyncThrottler {
     return { granted: false, delayMs: Math.max(0, Math.ceil(delayMs)) };
   }
 
+  /**
+   * Calculates the TTL for Redis bucket keys.
+   *
+   * @returns TTL in milliseconds
+   */
   private getTtlMs(): number {
     const refillToFullMs = (this.capacity / this.refillAmount) * this.refillInterval;
-    // Keep the bucket state around long enough to cover idle periods without unbounded key growth.
-    // 2x refill-to-full gives time for natural refills; +1000ms avoids edge expiry around boundaries.
     const ttlMs = Math.ceil(refillToFullMs * 2) + 1000;
     return Math.max(ttlMs, this.refillInterval);
   }

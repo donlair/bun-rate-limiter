@@ -50,14 +50,29 @@ export class StandardScheduler implements IScheduler {
     this.tryNext();
   }
 
+  /**
+   * Number of jobs currently waiting in the queue.
+   *
+   * @returns The pending job count
+   */
   get pendingCount(): number {
     return this.queue.size;
   }
 
+  /**
+   * Number of jobs currently running.
+   *
+   * @returns The running job count
+   */
   get runningCount(): number {
     return this._runningCount;
   }
 
+  /**
+   * Whether the scheduler is paused.
+   *
+   * @returns True if paused, false otherwise
+   */
   get isPaused(): boolean {
     return this._isPaused;
   }
@@ -76,6 +91,11 @@ export class StandardScheduler implements IScheduler {
     return this._runningCount >= this._concurrency || this.isRateLimited;
   }
 
+  /**
+   * Adds a job to the scheduler's queue.
+   *
+   * @param job - The job to add
+   */
   add(job: Job<unknown>): void {
     const wasEmpty = this.queue.size === 0 && this._runningCount === 0;
     this.queue.enqueue(job);
@@ -87,11 +107,17 @@ export class StandardScheduler implements IScheduler {
     this.tryNext();
   }
 
+  /**
+   * Starts processing jobs from the queue.
+   */
   start(): void {
     this._isPaused = false;
     this.tryNext();
   }
 
+  /**
+   * Pauses job processing. Running jobs will continue to completion.
+   */
   pause(): void {
     this._isPaused = true;
     if (this.scheduledTimer) {
@@ -100,25 +126,25 @@ export class StandardScheduler implements IScheduler {
     }
   }
 
+  /**
+   * Attempts to start the next job if conditions allow.
+   * Respects concurrency limits and throttling rules.
+   */
   tryNext(): void {
     if (this._isPaused) {
       return;
     }
 
-    // Cancel any pending scheduled attempt
     if (this.scheduledTimer) {
       clearTimeout(this.scheduledTimer);
       this.scheduledTimer = null;
     }
 
     if (this.asyncThrottlers.length === 0) {
-      // Sync-only fast path
       while (this._runningCount < this._concurrency && this.queue.size > 0) {
-        // Check throttlers
         const maxDelay = this.getMaxThrottleDelay();
 
         if (maxDelay > 0) {
-          // Schedule retry after delay
           this.scheduledTimer = setTimeout(() => {
             this.scheduledTimer = null;
             this.tryNext();
@@ -126,13 +152,11 @@ export class StandardScheduler implements IScheduler {
           return;
         }
 
-        // Dequeue and run the job
         const job = this.queue.dequeue();
         if (!job) {
           break;
         }
 
-        // Skip cancelled jobs without consuming throttler state
         if (job.status === 'cancelled') {
           continue;
         }
@@ -146,6 +170,10 @@ export class StandardScheduler implements IScheduler {
     this.requestProcessLoop();
   }
 
+  /**
+   * Removes all pending jobs from the queue.
+   * Running jobs will continue to completion.
+   */
   clear(): void {
     this.generation++;
     this.asyncRateLimitedUntil = 0;
@@ -197,6 +225,12 @@ export class StandardScheduler implements IScheduler {
     this.tryNext();
   }
 
+  /**
+   * Registers a callback to be invoked when the queue becomes idle.
+   *
+   * @param callback - Function to call when idle
+   * @returns Unsubscribe function
+   */
   onIdle(callback: () => void): () => void {
     this.idleCallbacks.add(callback);
     return () => {
@@ -204,6 +238,12 @@ export class StandardScheduler implements IScheduler {
     };
   }
 
+  /**
+   * Registers a callback to be invoked when the queue becomes active.
+   *
+   * @param callback - Function to call when active
+   * @returns Unsubscribe function
+   */
   onActive(callback: () => void): () => void {
     this.activeCallbacks.add(callback);
     return () => {
@@ -211,6 +251,11 @@ export class StandardScheduler implements IScheduler {
     };
   }
 
+  /**
+   * Gets the maximum delay required by all synchronous throttlers.
+   *
+   * @returns Maximum delay in milliseconds
+   */
   private getMaxThrottleDelay(): number {
     let maxDelay = 0;
     for (const throttler of this.throttlers) {
@@ -222,6 +267,10 @@ export class StandardScheduler implements IScheduler {
     return maxDelay;
   }
 
+  /**
+   * Requests the asynchronous processing loop to start if not already running.
+   * Handles re-entry by setting a flag to restart after current loop completes.
+   */
   private requestProcessLoop(): void {
     this.tryNextRequested = true;
     if (this.processing) {
@@ -237,6 +286,10 @@ export class StandardScheduler implements IScheduler {
     });
   }
 
+  /**
+   * Main asynchronous processing loop for handling async throttlers.
+   * Continues processing jobs until paused, cleared, or no jobs remain.
+   */
   private async processLoop(): Promise<void> {
     this.tryNextRequested = false;
     const generationAtStart = this.generation;
@@ -252,13 +305,11 @@ export class StandardScheduler implements IScheduler {
         break;
       }
 
-      // Drop cancelled jobs without consuming throttler state
       if (this.isJobCancelled(peeked)) {
         this.queue.dequeue();
         continue;
       }
 
-      // Check sync throttlers first to avoid acquiring distributed permits when we already know we must wait
       const syncDelay = this.getMaxThrottleDelay();
       if (syncDelay > 0) {
         this.scheduledTimer = setTimeout(() => {
@@ -283,7 +334,6 @@ export class StandardScheduler implements IScheduler {
         return;
       }
 
-      // Acquire succeeded, but the job may have been cancelled while we were awaiting.
       if (this.isJobCancelled(peeked)) {
         await this.releasePermits(permits);
         this.queue.dequeue();
@@ -296,7 +346,6 @@ export class StandardScheduler implements IScheduler {
         continue;
       }
       if (job !== peeked) {
-        // Queue ordering changed unexpectedly; put the job back and retry.
         await this.releasePermits(permits);
         this.queue.enqueue(job);
         continue;
@@ -311,6 +360,12 @@ export class StandardScheduler implements IScheduler {
     }
   }
 
+  /**
+   * Attempts to acquire permits from all async throttlers for a job.
+   *
+   * @param job - The job requiring permits
+   * @returns Object containing delay (if rate limited) and acquired permits
+   */
   private async acquireAsyncPermits(
     job: Job<unknown>,
   ): Promise<{ delayMs: number; permits: ThrottlePermit[] }> {
@@ -357,6 +412,11 @@ export class StandardScheduler implements IScheduler {
     return { delayMs: 0, permits };
   }
 
+  /**
+   * Releases all acquired async throttler permits.
+   *
+   * @param permits - Array of permits to release
+   */
   private async releasePermits(permits: ThrottlePermit[]): Promise<void> {
     if (permits.length === 0) {
       return;
@@ -364,40 +424,51 @@ export class StandardScheduler implements IScheduler {
     await Promise.allSettled(permits.map((permit) => permit.release()));
   }
 
+  /**
+   * Executes a job, notifying throttlers and tracking completion.
+   *
+   * @param job - The job to run
+   */
   private runJob(job: Job<unknown>): void {
     this._runningCount++;
 
-    // Notify all throttlers
     for (const throttler of this.throttlers) {
       throttler.notifyJobStarted();
     }
 
-    // Execute the job
     job
       .execute()
-      .catch(() => {
-        // Error is handled by the job itself
-      })
+      .catch(() => {})
       .finally(() => {
         this._runningCount--;
         this.onJobComplete();
       });
   }
 
+  /**
+   * Checks if a job has been cancelled.
+   *
+   * @param job - The job to check
+   * @returns True if cancelled, false otherwise
+   */
   private isJobCancelled(job: Job<unknown>): boolean {
     return job.status === 'cancelled';
   }
 
+  /**
+   * Handles job completion by attempting to start more jobs and checking for idle state.
+   */
   private onJobComplete(): void {
-    // Try to start more jobs
     this.tryNext();
 
-    // Check if we've become idle
     if (this._runningCount === 0 && this.queue.size === 0) {
       this.emitIdle();
     }
   }
 
+  /**
+   * Emits the idle event to all registered callbacks.
+   */
   private emitIdle(): void {
     if (this.wasActive) {
       this.wasActive = false;
@@ -407,6 +478,9 @@ export class StandardScheduler implements IScheduler {
     }
   }
 
+  /**
+   * Emits the active event to all registered callbacks.
+   */
   private emitActive(): void {
     if (!this.wasActive) {
       this.wasActive = true;

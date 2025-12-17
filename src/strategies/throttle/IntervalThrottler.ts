@@ -32,7 +32,6 @@ export class IntervalThrottler implements IThrottler {
       return 0;
     }
 
-    // We've hit the limit - calculate when the oldest entry will expire
     // biome-ignore lint/style/noNonNullAssertion: Length checked above guarantees element exists
     const oldestTimestamp = this.timestamps[0]!;
     const expiresAt = oldestTimestamp + this.interval;

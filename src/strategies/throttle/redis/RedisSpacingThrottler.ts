@@ -21,6 +21,11 @@ export interface RedisSpacingThrottlerOptions {
   keyFn?: (context: AcquireContext) => string | undefined;
 }
 
+/**
+ * Lua script that acquires a spacing permit from Redis.
+ * Returns [1, acquiredAtMs, previousMs] if granted, or [0, delayMs] if denied.
+ * The script checks if enough time has elapsed since the last acquisition.
+ */
 const ACQUIRE_SCRIPT = `
 local key = KEYS[1]
 local minDelayMs = tonumber(ARGV[1])
@@ -43,6 +48,10 @@ redis.call('SET', key, nowMs, 'PX', ttlMs)
 return { 1, nowMs, last }
 `;
 
+/**
+ * Lua script that releases a spacing permit, rolling back state in Redis.
+ * Returns 1 if the rollback was successful (state matched), 0 otherwise.
+ */
 const RELEASE_SCRIPT = `
 local key = KEYS[1]
 local expected = tonumber(ARGV[1])
@@ -62,6 +71,10 @@ end
 return 0
 `;
 
+/**
+ * Redis-backed spacing throttler that enforces a minimum delay between task starts.
+ * Uses distributed state in Redis to coordinate across multiple processes.
+ */
 export class RedisSpacingThrottler implements IAsyncThrottler {
   private readonly redis: IRedisClient;
   private readonly keyPrefix: string;
@@ -82,6 +95,12 @@ export class RedisSpacingThrottler implements IAsyncThrottler {
     this.keyFn = options.keyFn;
   }
 
+  /**
+   * Attempts to acquire a spacing permit for a task.
+   *
+   * @param context - The acquire context containing job and key information
+   * @returns Promise resolving to an acquire result indicating whether the permit was granted
+   */
   async acquire(context: AcquireContext): Promise<AcquireResult> {
     const resolvedKey =
       this.keyFn?.(context) ?? context.key ?? context.job.rateLimitKey ?? this.defaultKey;
@@ -117,6 +136,12 @@ export class RedisSpacingThrottler implements IAsyncThrottler {
     return { granted: true, permit };
   }
 
+  /**
+   * Parses the Redis EVAL result from the acquire script.
+   *
+   * @param result - The raw result from Redis EVAL command
+   * @returns Parsed acquire result with grant status and timing information
+   */
   private parseResult(
     result: unknown,
   ):
@@ -141,8 +166,12 @@ export class RedisSpacingThrottler implements IAsyncThrottler {
     return { granted: true, acquiredAtMs, previousMs };
   }
 
+  /**
+   * Calculates the TTL for Redis keys.
+   *
+   * @returns TTL in milliseconds
+   */
   private getTtlMs(): number {
-    // Long enough to survive small idle gaps without leaving keys forever.
     return Math.max(1000, this.minDelayMs * 10);
   }
 }

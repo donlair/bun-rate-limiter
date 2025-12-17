@@ -47,6 +47,13 @@ export {
   type TokenBucketThrottlerOptions,
 } from './strategies/throttle/TokenBucketThrottler';
 
+/**
+ * Resolves throttling strategy based on provided options.
+ * When Redis backend is present, limits are enforced via async throttlers only.
+ *
+ * @param options - RateLimiter configuration options
+ * @returns Object containing sync and async throttler arrays
+ */
 function resolveThrottling(options: RateLimiterOptions): {
   throttlers: import('./strategies/throttle/IThrottler').IThrottler[];
   asyncThrottlers: import('./strategies/throttle/IAsyncThrottler').IAsyncThrottler[];
@@ -64,7 +71,6 @@ function resolveThrottling(options: RateLimiterOptions): {
     throw new Error('RateLimiter: set compose=true to combine limits with manual throttlers');
   }
 
-  // When Redis backend is present, limits are enforced via async throttlers only (not both)
   const derivedThrottlers =
     limits && backend?.type !== 'redis' ? buildThrottlersFromLimits(limits) : [];
   const derivedAsyncThrottlers =
@@ -106,22 +112,18 @@ export class RateLimiter {
     this.defaultTimeout = timeout;
     this.defaultRateLimitKey = defaultRateLimitKey;
 
-    // Create event bus
     this.events = new EventBus();
 
-    // Create priority queue for jobs (higher priority first)
     const queue = new PriorityQueue<Job<unknown>>((a, b) => a.priority - b.priority);
 
     const { throttlers, asyncThrottlers } = resolveThrottling(options);
 
-    // Create scheduler
     this.scheduler = new StandardScheduler(queue, throttlers, {
       concurrency,
       autoStart,
       asyncThrottlers,
     });
 
-    // Wire up events
     this.scheduler.onIdle(() => this.events.emit('idle'));
     this.scheduler.onActive(() => this.events.emit('active'));
   }
@@ -185,7 +187,6 @@ export class RateLimiter {
       timeout: options.timeout ?? this.defaultTimeout,
     });
 
-    // Wire up job events
     job.promise
       .then((result) => {
         this.events.emit('completed', result);

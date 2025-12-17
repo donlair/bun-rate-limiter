@@ -65,11 +65,15 @@ export class PriorityQueue<T> implements IQueue<T> {
     if (priorityCompare !== 0) {
       return priorityCompare;
     }
-    // Same priority: use insertion order (FIFO)
-    // Earlier (lower insertOrder) has higher priority
     return b.insertOrder - a.insertOrder;
   }
 
+  /**
+   * Moves an element up the heap until it reaches its correct position.
+   * Used after inserting a new element at the end of the heap.
+   *
+   * @param index - Starting index to bubble up from
+   */
   private bubbleUp(index: number): void {
     const current = this.items[index]!;
 
@@ -88,6 +92,12 @@ export class PriorityQueue<T> implements IQueue<T> {
     this.items[index] = current;
   }
 
+  /**
+   * Moves an element down the heap until it reaches its correct position.
+   * Used after removing the root and replacing it with the last element.
+   *
+   * @param index - Starting index to bubble down from
+   */
   private bubbleDown(index: number): void {
     const length = this.items.length;
 

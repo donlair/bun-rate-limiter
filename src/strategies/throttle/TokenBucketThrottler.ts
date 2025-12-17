@@ -45,6 +45,11 @@ export class TokenBucketThrottler implements IThrottler {
     this.lastRefillTime = Date.now();
   }
 
+  /**
+   * Get the delay before the next job can start.
+   *
+   * @returns 0 if a token is available, or milliseconds to wait until the next token
+   */
   getNextRunDelay(): number {
     this.refill();
 
@@ -59,16 +64,28 @@ export class TokenBucketThrottler implements IThrottler {
     return Math.max(0, Math.ceil(delayMs));
   }
 
+  /**
+   * Notify that a job has started.
+   * Consumes one token from the bucket.
+   */
   notifyJobStarted(): void {
     this.refill();
     this.tokens = Math.max(0, this.tokens - 1);
   }
 
+  /**
+   * Reset the throttler to its initial state.
+   * Restores tokens to full capacity and resets the refill timer.
+   */
   reset(): void {
     this.tokens = this.capacity;
     this.lastRefillTime = Date.now();
   }
 
+  /**
+   * Refills tokens based on elapsed time since the last refill.
+   * Called internally before checking token availability.
+   */
   private refill(): void {
     const now = Date.now();
     const elapsedMs = now - this.lastRefillTime;

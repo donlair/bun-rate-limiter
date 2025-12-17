@@ -22,18 +22,35 @@ export interface JobOptions {
  * It handles the Promise resolution/rejection and AbortSignal integration.
  */
 export class Job<T> {
+  /** Unique identifier for this job */
   readonly id: string;
+  /** Priority level (higher = processed first) */
   readonly priority: number;
+  /** Optional per-key identifier for distributed rate limiting */
   readonly rateLimitKey?: string;
+  /** Timeout in milliseconds (0 or undefined = no timeout) */
   readonly timeout?: number;
+  /** Current execution status of the job */
   private _status: JobStatus = 'pending';
+  /** The task function to execute */
   private readonly fn: Task<T>;
+  /** Internal abort controller for cancellation */
   private readonly abortController: AbortController;
+  /** External abort signal provided by user */
   private readonly externalSignal?: AbortSignal;
+  /** Promise resolver function */
   private resolvePromise!: (value: T) => void;
+  /** Promise rejector function */
   private rejectPromise!: (reason: unknown) => void;
+  /** Promise that resolves when job completes */
   readonly promise: Promise<T>;
 
+  /**
+   * Creates a new Job instance.
+   *
+   * @param fn - The task function to execute
+   * @param options - Job configuration options
+   */
   constructor(fn: Task<T>, options: JobOptions = {}) {
     this.id = `job_${++jobIdCounter}_${Date.now()}`;
     this.fn = fn;
@@ -43,13 +60,11 @@ export class Job<T> {
     this.abortController = new AbortController();
     this.externalSignal = options.signal;
 
-    // Create the promise that external code can await
     this.promise = new Promise<T>((resolve, reject) => {
       this.resolvePromise = resolve;
       this.rejectPromise = reject;
     });
 
-    // Listen to external signal if provided
     if (this.externalSignal?.aborted) {
       this._status = 'cancelled';
     } else {
@@ -89,7 +104,6 @@ export class Job<T> {
    * @throws If the task throws, times out, or is cancelled
    */
   async execute(): Promise<T> {
-    // Check if already cancelled
     if (this._status === 'cancelled') {
       const error = new DOMException('Job was cancelled', 'AbortError');
       this.rejectPromise(error);
@@ -98,7 +112,6 @@ export class Job<T> {
 
     this._status = 'running';
 
-    // Create a combined signal if there's an external signal
     const signal = this.externalSignal
       ? AbortSignal.any([this.abortController.signal, this.externalSignal])
       : this.abortController.signal;
@@ -109,7 +122,6 @@ export class Job<T> {
       let result: T;
 
       if (this.timeout && this.timeout > 0) {
-        // Race task against timeout and external abort signal
         const timeoutPromise = new Promise<never>((_, reject) => {
           timeoutId = setTimeout(() => {
             this.abortController.abort();
@@ -117,8 +129,6 @@ export class Job<T> {
           }, this.timeout);
         });
 
-        // Also race against external signal to handle external cancellation
-        // Only listen to external signal, not the combined signal
         const abortPromise = this.externalSignal
           ? new Promise<never>((_, reject) => {
               const onAbort = () => {
@@ -130,14 +140,13 @@ export class Job<T> {
                 this.externalSignal?.addEventListener('abort', onAbort, { once: true });
               }
             })
-          : new Promise<never>(() => {}); // Never resolves if no external signal
+          : new Promise<never>(() => {});
 
         result = await Promise.race([this.fn({ signal }), timeoutPromise, abortPromise]);
       } else {
         result = await this.fn({ signal });
       }
 
-      // Check if cancelled during execution (status may have changed)
       if (this.abortController.signal.aborted) {
         const error = new DOMException('Job was cancelled', 'AbortError');
         this._status = 'cancelled';
@@ -149,7 +158,6 @@ export class Job<T> {
       this.resolvePromise(result);
       return result;
     } catch (error) {
-      // Determine status based on error type
       if (error instanceof TimeoutError) {
         this._status = 'failed';
       } else if (this.abortController.signal.aborted) {
@@ -160,7 +168,6 @@ export class Job<T> {
       this.rejectPromise(error);
       throw error;
     } finally {
-      // Clean up timeout timer to prevent memory leaks
       if (timeoutId) {
         clearTimeout(timeoutId);
       }

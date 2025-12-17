@@ -1,6 +1,6 @@
 {
   "name": "bun-rate-limiter",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "A modern, modular rate limiter and concurrency queue. Built with Bun, runs anywhere—Node.js 18+, Vercel, AWS Lambda, and more.",
   "keywords": [
     "queue",

@@ -20,5 +20,4 @@ Commit the generated `.changeset/*.md` file with your PR.
 
 ### Required secrets
 
-- `NPM_TOKEN` (an npm access token with publish rights)
-
+- npm Trusted Publishing (OIDC) configured for this GitHub repo (no `NPM_TOKEN` required)

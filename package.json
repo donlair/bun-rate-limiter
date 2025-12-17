@@ -68,7 +68,7 @@
     "prepack": "bun run build",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "bun test ./tests && bun run build && npm publish --provenance --access public"
+    "release": "bun test ./tests && bun run build && npm publish --access public"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.8",

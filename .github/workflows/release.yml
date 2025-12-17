@@ -17,7 +17,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - uses: oven-sh/setup-bun@v2
@@ -29,12 +29,6 @@ jobs:
 
       - name: Run tests
         run: bun test ./tests
-
-      - name: Ensure modern npm for OIDC
-        run: |
-          npm --version
-          npm install -g npm@latest
-          npm --version
 
       - uses: changesets/action@v1
         with:

@@ -162,6 +162,8 @@ export async function analyzeLatencyDistribution(
 
   // Measurement phase
   const pending: Promise<void>[] = [];
+  const completed = new Set<Promise<void>>();
+  let errorCount = 0;
 
   for (let i = 0; i < operations; i++) {
     const addTime = now();
@@ -181,6 +183,15 @@ export async function analyzeLatencyDistribution(
       .then(() => {
         const completeTime = now();
         queueWaitHistogram.add(completeTime - addTime);
+      })
+      .catch((err) => {
+        errorCount++;
+        if (errorCount <= 3) {
+          console.warn(`Latency analysis task failed:`, err instanceof Error ? err.message : err);
+        }
+      })
+      .finally(() => {
+        completed.add(promise);
       });
 
     pending.push(promise);
@@ -188,12 +199,8 @@ export async function analyzeLatencyDistribution(
     // Control submission rate to avoid overwhelming
     if (pending.length >= concurrency * 3) {
       await Promise.race(pending);
-      // Clean up completed promises
-      const stillPending = pending.filter((p) => {
-        let resolved = false;
-        p.then(() => (resolved = true)).catch(() => (resolved = true));
-        return !resolved;
-      });
+      // Clean up completed promises using the Set
+      const stillPending = pending.filter((p) => !completed.has(p));
       pending.length = 0;
       pending.push(...stillPending);
     }

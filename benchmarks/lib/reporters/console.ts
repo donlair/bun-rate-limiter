@@ -44,10 +44,11 @@ export function reportBenchmarkResult(
   metrics: BenchmarkMetrics,
   options: ConsoleReporterOptions = {}
 ): void {
+  const isTTY = process.stdout.isTTY ?? false;
   const {
     showDetailedLatency = true,
     showMemoryDetails = true,
-    useColors = true,
+    useColors = isTTY,
     baselineMetrics,
   } = options;
 
@@ -150,7 +151,8 @@ export function reportMemoryLeakAnalysis(
   report: MemoryLeakReport,
   options: { useColors?: boolean } = {}
 ): void {
-  const { useColors = true } = options;
+  const isTTY = process.stdout.isTTY ?? false;
+  const { useColors = isTTY } = options;
   const width = 70;
 
   console.log();
@@ -184,7 +186,8 @@ export function reportComparisonTable(
   results: Array<{ name: string; metrics: BenchmarkMetrics }>,
   options: { useColors?: boolean; sortBy?: "throughput" | "latency" } = {}
 ): void {
-  const { useColors = true, sortBy = "throughput" } = options;
+  const isTTY = process.stdout.isTTY ?? false;
+  const { useColors = isTTY, sortBy = "throughput" } = options;
 
   // Sort results
   const sorted = [...results].sort((a, b) => {
@@ -260,7 +263,8 @@ export function reportProgress(
   label: string,
   options: { useColors?: boolean } = {}
 ): void {
-  const { useColors = true } = options;
+  const isTTY = process.stdout.isTTY ?? false;
+  const { useColors = isTTY } = options;
   const percent = Math.round((current / total) * 100);
   const barWidth = 30;
   const filled = Math.round((current / total) * barWidth);

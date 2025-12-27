@@ -40,26 +40,27 @@ export function createThroughputBenchmarks(
   const benchmarks: BenchmarkDefinition[] = [];
 
   for (const concurrency of opts.concurrencyLevels) {
+    // Each benchmark needs its own limiter closure
+    let limiter: RateLimiter | null = null;
+
     benchmarks.push({
       name: `Throughput: ${config.name}`,
       config: `concurrency=${concurrency}, ops=${opts.operations}`,
       setup: async () => {
-        const limiter = new RateLimiter({
+        limiter = new RateLimiter({
           concurrency,
           ...config.options,
         });
 
         return {
           cleanup: async () => {
-            limiter.clear();
+            limiter?.clear();
+            limiter = null;
           },
         };
       },
-      fn: async ({ operationIndex }) => {
-        const limiter = new RateLimiter({
-          concurrency,
-          ...config.options,
-        });
+      fn: async () => {
+        if (!limiter) throw new Error("Limiter not initialized");
 
         await limiter.add(async () => {
           await simulateWork(opts.workload);
@@ -67,7 +68,7 @@ export function createThroughputBenchmarks(
       },
       options: {
         operations: opts.operations,
-        concurrency: 1, // We control concurrency at the limiter level
+        concurrency: Math.min(concurrency * 2, 200), // Allow some queuing pressure
         showProgress: true,
         progressLabel: `${config.name} (c=${concurrency})`,
       },

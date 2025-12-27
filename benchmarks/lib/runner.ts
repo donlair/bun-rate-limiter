@@ -8,23 +8,23 @@ import { forceGC, delay, getRuntime } from "./utils.js";
 import { reportProgress } from "./reporters/console.js";
 
 export interface BenchmarkOptions {
-  /** Number of operations to run */
+  /** Number of operations to run @default 10000 */
   operations?: number;
-  /** Number of warmup operations */
+  /** Number of warmup operations @default 100 */
   warmupOperations?: number;
-  /** Maximum duration in ms (overrides operations if reached first) */
+  /** Maximum duration in ms (overrides operations if reached first) @default 60000 */
   maxDurationMs?: number;
-  /** Concurrency level */
+  /** Concurrency level @default 1 */
   concurrency?: number;
-  /** Whether to track memory during the benchmark */
+  /** Whether to track memory during the benchmark @default true */
   trackMemory?: boolean;
-  /** Whether to detect memory leaks */
+  /** Whether to detect memory leaks @default false */
   detectLeaks?: boolean;
-  /** Memory snapshot interval in ms */
+  /** Memory snapshot interval in ms @default 1000 */
   memorySnapshotIntervalMs?: number;
-  /** Show progress bar */
+  /** Show progress bar @default true */
   showProgress?: boolean;
-  /** Label for progress bar */
+  /** Label for progress bar @default "Running" */
   progressLabel?: string;
 }
 
@@ -86,10 +86,15 @@ export async function runBenchmark(
     : null;
 
   try {
-    // Warmup phase
+    // Warmup phase - errors are logged but don't abort the benchmark
     if (options.warmupOperations > 0) {
       for (let i = 0; i < options.warmupOperations; i++) {
-        await fn({ operationIndex: i });
+        try {
+          await fn({ operationIndex: i });
+        } catch (error) {
+          // Warmup failures may be expected (e.g., rate limiting during warmup)
+          // Log but continue
+        }
       }
     }
 
@@ -196,9 +201,13 @@ export async function runBenchmark(
       runtime,
     };
   } finally {
-    // Cleanup
+    // Cleanup - always attempt, even on error
     if (cleanup) {
-      await cleanup();
+      try {
+        await cleanup();
+      } catch (cleanupError) {
+        // Cleanup errors shouldn't mask the original error
+      }
     }
   }
 }
@@ -278,11 +287,17 @@ export async function measureThroughput(
 
   while (completed < operations) {
     while (pending.length < concurrency && completed + pending.length < operations) {
-      const promise = fn().then(() => {
-        completed++;
-        const idx = pending.indexOf(promise);
-        if (idx !== -1) pending.splice(idx, 1);
-      });
+      const promise = fn()
+        .then(() => {
+          completed++;
+        })
+        .catch(() => {
+          // Count errors but don't abort measurement
+        })
+        .finally(() => {
+          const idx = pending.indexOf(promise);
+          if (idx !== -1) pending.splice(idx, 1);
+        });
       pending.push(promise);
     }
 

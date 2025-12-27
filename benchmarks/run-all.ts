@@ -53,24 +53,44 @@ interface CliOptions {
   noSustained: boolean;
 }
 
-function parseCliArgs(): CliOptions {
-  const { values } = parseArgs({
-    options: {
-      quick: { type: "boolean", default: false },
-      full: { type: "boolean", default: false },
-      output: { type: "string", short: "o" },
-      "no-memory": { type: "boolean", default: false },
-      "no-sustained": { type: "boolean", default: false },
-    },
-  });
+const HELP = `
+Run the full benchmark suite
 
-  return {
-    quick: values.quick as boolean,
-    full: values.full as boolean,
-    output: (values.output as string) || null,
-    noMemory: values["no-memory"] as boolean,
-    noSustained: values["no-sustained"] as boolean,
-  };
+Usage:
+  bun run benchmarks/run-all.ts [options]
+
+Options:
+  --quick           Run quick benchmarks (fewer operations)
+  --full            Run full benchmarks (more operations, longer duration)
+  --output, -o      Write JSON results to file
+  --no-memory       Skip memory stress tests
+  --no-sustained    Skip sustained load tests
+`;
+
+function parseCliArgs(): CliOptions {
+  try {
+    const { values } = parseArgs({
+      options: {
+        quick: { type: "boolean", default: false },
+        full: { type: "boolean", default: false },
+        output: { type: "string", short: "o" },
+        "no-memory": { type: "boolean", default: false },
+        "no-sustained": { type: "boolean", default: false },
+      },
+    });
+
+    return {
+      quick: values.quick as boolean,
+      full: values.full as boolean,
+      output: (values.output as string) || null,
+      noMemory: values["no-memory"] as boolean,
+      noSustained: values["no-sustained"] as boolean,
+    };
+  } catch (error) {
+    console.error("Error parsing arguments:", error);
+    console.log(HELP);
+    process.exit(1);
+  }
 }
 
 async function main(): Promise<void> {

@@ -2,6 +2,7 @@
  * JSON reporter for benchmark results
  */
 
+import * as os from "os";
 import type { BenchmarkMetrics } from "../metrics.js";
 import type { MemoryLeakReport } from "../memory-tracker.js";
 import { getRuntime } from "../utils.js";
@@ -45,7 +46,6 @@ export class JsonReporter {
   /** Generate the full report */
   generateReport(): BenchmarkReport {
     const runtime = getRuntime();
-    const os = require("os");
 
     const report: BenchmarkReport = {
       metadata: {

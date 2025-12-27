@@ -129,8 +129,9 @@ To test Redis-backed configurations:
    docker run -p 6379:6379 redis:alpine
    ```
 
-2. Create a custom benchmark script using the Redis configs:
+2. Create a custom benchmark script (e.g., `benchmarks/redis-bench.ts`):
    ```typescript
+   // Run from project root: bun run benchmarks/redis-bench.ts
    import { createClient } from "redis";
    import { getAllRedisConfigs } from "./configs/redis.js";
    import { runBenchmark } from "./lib/runner.js";

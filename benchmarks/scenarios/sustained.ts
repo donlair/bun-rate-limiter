@@ -186,10 +186,14 @@ export async function runSustainedLoadTest(
   // Calculate stability score based on throughput variance
   const opsPerSecondValues = intervals.map((i) => i.opsPerSecond);
   const avgOps =
-    opsPerSecondValues.reduce((a, b) => a + b, 0) / opsPerSecondValues.length;
+    opsPerSecondValues.length > 0
+      ? opsPerSecondValues.reduce((a, b) => a + b, 0) / opsPerSecondValues.length
+      : 0;
   const variance =
-    opsPerSecondValues.reduce((sum, v) => sum + (v - avgOps) ** 2, 0) /
-    opsPerSecondValues.length;
+    opsPerSecondValues.length > 0
+      ? opsPerSecondValues.reduce((sum, v) => sum + (v - avgOps) ** 2, 0) /
+        opsPerSecondValues.length
+      : 0;
   const stdDev = Math.sqrt(variance);
   const coeffOfVariation = avgOps > 0 ? stdDev / avgOps : 0;
   const stabilityScore = Math.max(0, 1 - coeffOfVariation);
@@ -200,8 +204,8 @@ export async function runSustainedLoadTest(
       totalDurationMs,
       totalOperations,
       avgOpsPerSecond: (totalOperations / totalDurationMs) * 1000,
-      minOpsPerSecond: Math.min(...opsPerSecondValues),
-      maxOpsPerSecond: Math.max(...opsPerSecondValues),
+      minOpsPerSecond: opsPerSecondValues.length > 0 ? Math.min(...opsPerSecondValues) : 0,
+      maxOpsPerSecond: opsPerSecondValues.length > 0 ? Math.max(...opsPerSecondValues) : 0,
       latencyP50: allLatencies.percentile(50),
       latencyP99: allLatencies.percentile(99),
       memoryGrowth:
@@ -216,6 +220,9 @@ export async function runSustainedLoadTest(
 
 /**
  * Create a sustained load benchmark definition
+ *
+ * @deprecated This returns a non-functional BenchmarkDefinition that throws when executed.
+ * Use {@link runSustainedLoadTest} directly instead for sustained load testing.
  */
 export function createSustainedLoadBenchmark(
   config: RateLimiterConfig,

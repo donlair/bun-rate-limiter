@@ -25,19 +25,13 @@ async function importPQueue(): Promise<typeof import("p-queue")> {
  */
 export class PQueueAdapter implements CompetitorAdapter {
   private queue: any; // p-queue instance
-  private _pending = 0;
 
   constructor(queue: any) {
     this.queue = queue;
   }
 
   async add<T>(fn: () => Promise<T>): Promise<T> {
-    this._pending++;
-    try {
-      return await this.queue.add(fn);
-    } finally {
-      this._pending--;
-    }
+    return await this.queue.add(fn);
   }
 
   clear(): void {

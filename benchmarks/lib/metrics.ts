@@ -46,16 +46,27 @@ export interface BenchmarkMetrics {
   timeouts: number;
 }
 
-/** Histogram for collecting latency samples */
+/**
+ * Histogram for collecting and analyzing latency samples.
+ * Provides statistical analysis including percentiles, mean, and standard deviation.
+ */
 export class Histogram {
   private samples: number[] = [];
   private sorted = false;
 
+  /**
+   * Add a single sample value to the histogram
+   * @param value - The sample value to add (typically in milliseconds)
+   */
   add(value: number): void {
     this.samples.push(value);
     this.sorted = false;
   }
 
+  /**
+   * Add multiple sample values to the histogram
+   * @param values - Array of sample values to add
+   */
   addAll(values: number[]): void {
     this.samples.push(...values);
     this.sorted = false;
@@ -68,27 +79,32 @@ export class Histogram {
     }
   }
 
+  /** Number of samples in the histogram */
   get count(): number {
     return this.samples.length;
   }
 
+  /** Minimum sample value, or 0 if empty */
   get min(): number {
     if (this.samples.length === 0) return 0;
     this.ensureSorted();
     return this.samples[0];
   }
 
+  /** Maximum sample value, or 0 if empty */
   get max(): number {
     if (this.samples.length === 0) return 0;
     this.ensureSorted();
     return this.samples[this.samples.length - 1];
   }
 
+  /** Arithmetic mean of all samples, or 0 if empty */
   get mean(): number {
     if (this.samples.length === 0) return 0;
     return this.samples.reduce((a, b) => a + b, 0) / this.samples.length;
   }
 
+  /** Sample standard deviation, or 0 if fewer than 2 samples */
   get stddev(): number {
     if (this.samples.length < 2) return 0;
     const mean = this.mean;
@@ -98,6 +114,11 @@ export class Histogram {
     );
   }
 
+  /**
+   * Get the value at a given percentile
+   * @param p - Percentile (0-100), e.g., 50 for median, 99 for p99
+   * @returns The value at the given percentile, or 0 if histogram is empty
+   */
   percentile(p: number): number {
     if (this.samples.length === 0) return 0;
     this.ensureSorted();
@@ -105,6 +126,10 @@ export class Histogram {
     return this.samples[Math.max(0, Math.min(index, this.samples.length - 1))];
   }
 
+  /**
+   * Get comprehensive statistics for all samples
+   * @returns LatencyStats object with count, min, max, mean, stddev, and percentiles
+   */
   getStats(): LatencyStats {
     return {
       count: this.count,
@@ -121,6 +146,7 @@ export class Histogram {
     };
   }
 
+  /** Clear all samples from the histogram */
   reset(): void {
     this.samples = [];
     this.sorted = false;

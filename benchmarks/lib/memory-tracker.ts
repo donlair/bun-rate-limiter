@@ -79,7 +79,11 @@ export class MemoryTracker {
     this.takeSnapshot(); // Initial snapshot
 
     this.intervalId = setInterval(() => {
-      this.takeSnapshot();
+      try {
+        this.takeSnapshot();
+      } catch {
+        // Snapshot failures shouldn't crash the tracker
+      }
     }, this.options.snapshotIntervalMs);
   }
 

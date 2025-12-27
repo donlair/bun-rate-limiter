@@ -76,7 +76,7 @@ export const interval: RateLimiterConfig = {
     limits: {
       interval: {
         limit: 100,
-        intervalMs: 1000,
+        interval: 1000,
       },
     },
   },
@@ -91,7 +91,7 @@ export const intervalHighThroughput: RateLimiterConfig = {
     limits: {
       interval: {
         limit: 10000,
-        intervalMs: 1000,
+        interval: 1000,
       },
     },
   },

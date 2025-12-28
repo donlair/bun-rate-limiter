@@ -4,7 +4,6 @@
  */
 
 import { RateLimiter } from "../../src/index.js";
-import type { BenchmarkDefinition } from "../lib/runner.js";
 import { now, delay, forceGC, formatBytes, formatNumber } from "../lib/utils.js";
 import type { RateLimiterConfig } from "../configs/types.js";
 import { Histogram } from "../lib/metrics.js";
@@ -214,38 +213,6 @@ export async function runSustainedLoadTest(
           : 0,
       totalErrors,
       stabilityScore,
-    },
-  };
-}
-
-/**
- * Create a sustained load benchmark definition
- *
- * @deprecated This returns a non-functional BenchmarkDefinition that throws when executed.
- * Use {@link runSustainedLoadTest} directly instead for sustained load testing.
- */
-export function createSustainedLoadBenchmark(
-  config: RateLimiterConfig,
-  options: SustainedLoadOptions = {}
-): BenchmarkDefinition {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
-
-  return {
-    name: `Sustained Load: ${config.name}`,
-    config: `duration=${opts.durationMs / 1000}s, target=${opts.targetOpsPerSecond} ops/s`,
-    setup: async () => {
-      return { cleanup: async () => {} };
-    },
-    fn: async () => {
-      // This benchmark is special - it runs as a single operation
-      // The actual work is done in runSustainedLoadTest
-      throw new Error(
-        "Use runSustainedLoadTest directly instead of the benchmark runner"
-      );
-    },
-    options: {
-      operations: 1,
-      showProgress: false,
     },
   };
 }

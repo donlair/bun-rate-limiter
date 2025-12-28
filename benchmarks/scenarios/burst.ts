@@ -113,6 +113,7 @@ export async function analyzeBurstBehavior(
 
   const allLatencies = new Histogram();
   let peakQueueSize = 0;
+  let totalErrors = 0;
   const startTime = now();
 
   for (let burst = 0; burst < opts.burstCount; burst++) {
@@ -121,6 +122,7 @@ export async function analyzeBurstBehavior(
     let firstCompletion: number | null = null;
     let lastCompletion = 0;
     let maxQueueSize = 0;
+    let burstErrors = 0;
 
     // Submit entire burst at once
     const promises: Promise<void>[] = [];
@@ -152,6 +154,16 @@ export async function analyzeBurstBehavior(
             firstCompletion = completionTime;
           }
           lastCompletion = completionTime;
+        })
+        .catch((error) => {
+          burstErrors++;
+          totalErrors++;
+          if (burstErrors <= 3) {
+            console.warn(
+              `  [burst ${burst}] Task failed:`,
+              error instanceof Error ? error.message : error
+            );
+          }
         });
 
       promises.push(promise);
@@ -233,16 +245,27 @@ export async function measureBurstRecovery(
   const burstStart = now();
   const burstPromises: Promise<void>[] = [];
   let peakLatencyMs = 0;
+  let burstErrors = 0;
 
   for (let i = 0; i < burstSize; i++) {
     const taskStart = now();
-    const promise = limiter.add(async () => {
-      const latency = now() - taskStart;
-      if (latency > peakLatencyMs) {
-        peakLatencyMs = latency;
-      }
-      await delay(0);
-    });
+    const promise = limiter
+      .add(async () => {
+        const latency = now() - taskStart;
+        if (latency > peakLatencyMs) {
+          peakLatencyMs = latency;
+        }
+        await delay(0);
+      })
+      .catch((error) => {
+        burstErrors++;
+        if (burstErrors <= 3) {
+          console.warn(
+            `  [burst recovery] Task failed:`,
+            error instanceof Error ? error.message : error
+          );
+        }
+      });
     burstPromises.push(promise);
   }
 
@@ -317,6 +340,7 @@ export async function measureConcurrentBursts(
 
   const startTime = now();
   const allPromises: Promise<void>[] = [];
+  let totalErrors = 0;
 
   // All clients submit bursts simultaneously
   for (let clientId = 0; clientId < clientCount; clientId++) {
@@ -332,6 +356,15 @@ export async function measureConcurrentBursts(
           const client = clientResults.get(clientId)!;
           client.completed++;
           client.latencies.push(latency);
+        })
+        .catch((error) => {
+          totalErrors++;
+          if (totalErrors <= 3) {
+            console.warn(
+              `  [concurrent bursts] Client ${clientId} task failed:`,
+              error instanceof Error ? error.message : error
+            );
+          }
         });
 
       allPromises.push(promise);

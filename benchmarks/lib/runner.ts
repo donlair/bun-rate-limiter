@@ -88,13 +88,23 @@ export async function runBenchmark(
   try {
     // Warmup phase - errors are logged but don't abort the benchmark
     if (options.warmupOperations > 0) {
+      let warmupErrors = 0;
       for (let i = 0; i < options.warmupOperations; i++) {
         try {
           await fn({ operationIndex: i });
         } catch (error) {
           // Warmup failures may be expected (e.g., rate limiting during warmup)
-          // Log but continue
+          warmupErrors++;
+          if (warmupErrors <= 3) {
+            console.warn(
+              `  [warmup] Operation ${i} failed:`,
+              error instanceof Error ? error.message : error
+            );
+          }
         }
+      }
+      if (warmupErrors > 3) {
+        console.warn(`  [warmup] ... and ${warmupErrors - 3} more errors`);
       }
     }
 
@@ -206,7 +216,11 @@ export async function runBenchmark(
       try {
         await cleanup();
       } catch (cleanupError) {
-        // Cleanup errors shouldn't mask the original error
+        // Cleanup errors shouldn't mask the original error, but we log them
+        console.warn(
+          `  [cleanup] Failed:`,
+          cleanupError instanceof Error ? cleanupError.message : cleanupError
+        );
       }
     }
   }
@@ -265,7 +279,7 @@ export async function measureThroughput(
     warmupOperations?: number;
     concurrency?: number;
   } = {}
-): Promise<{ opsPerSecond: number; totalTimeMs: number }> {
+): Promise<{ opsPerSecond: number; totalTimeMs: number; errorCount: number }> {
   const {
     operations = 10000,
     warmupOperations = 100,
@@ -284,15 +298,16 @@ export async function measureThroughput(
   // Run with concurrency
   const pending: Promise<void>[] = [];
   let completed = 0;
+  let errorCount = 0;
 
-  while (completed < operations) {
-    while (pending.length < concurrency && completed + pending.length < operations) {
+  while (completed + errorCount < operations) {
+    while (pending.length < concurrency && completed + errorCount + pending.length < operations) {
       const promise = fn()
         .then(() => {
           completed++;
         })
         .catch(() => {
-          // Count errors but don't abort measurement
+          errorCount++;
         })
         .finally(() => {
           const idx = pending.indexOf(promise);
@@ -309,7 +324,11 @@ export async function measureThroughput(
   await Promise.all(pending);
 
   const totalTimeMs = performance.now() - startTime;
-  const opsPerSecond = (operations / totalTimeMs) * 1000;
+  const opsPerSecond = (completed / totalTimeMs) * 1000;
 
-  return { opsPerSecond, totalTimeMs };
+  if (errorCount > 0) {
+    console.warn(`  [measureThroughput] ${errorCount} errors occurred during measurement`);
+  }
+
+  return { opsPerSecond, totalTimeMs, errorCount };
 }

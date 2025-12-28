@@ -34,7 +34,7 @@ export const tokenBucketWithInterval: RateLimiterConfig = {
       },
       interval: {
         limit: 500,
-        intervalMs: 1000,
+        interval: 1000,
       },
     },
   },
@@ -50,7 +50,7 @@ export const spacingWithInterval: RateLimiterConfig = {
       minDelayMs: 5,
       interval: {
         limit: 200,
-        intervalMs: 1000,
+        interval: 1000,
       },
     },
   },
@@ -71,7 +71,7 @@ export const fullComposition: RateLimiterConfig = {
       minDelayMs: 2,
       interval: {
         limit: 300,
-        intervalMs: 1000,
+        interval: 1000,
       },
     },
   },

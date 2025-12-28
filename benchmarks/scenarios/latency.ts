@@ -199,6 +199,8 @@ export async function analyzeLatencyDistribution(
     // Control submission rate to avoid overwhelming
     if (pending.length >= concurrency * 3) {
       await Promise.race(pending);
+      // Wait for microtask to ensure .finally() has run and updated the completed Set
+      await Promise.resolve();
       // Clean up completed promises using the Set
       const stillPending = pending.filter((p) => !completed.has(p));
       pending.length = 0;

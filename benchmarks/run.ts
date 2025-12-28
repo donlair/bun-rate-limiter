@@ -144,12 +144,27 @@ function parseCliArgs(): CliOptions {
       },
     });
 
+    const operations = parseInt(values.operations as string, 10);
+    const concurrency = parseInt(values.concurrency as string, 10);
+    const duration = parseInt(values.duration as string, 10);
+
+    // Validate numeric arguments
+    if (isNaN(operations) || operations <= 0) {
+      throw new Error(`Invalid operations value: ${values.operations}`);
+    }
+    if (isNaN(concurrency) || concurrency <= 0) {
+      throw new Error(`Invalid concurrency value: ${values.concurrency}`);
+    }
+    if (isNaN(duration) || duration <= 0) {
+      throw new Error(`Invalid duration value: ${values.duration}`);
+    }
+
     return {
       scenario: values.scenario as string,
       config: values.config as string,
-      operations: parseInt(values.operations as string, 10),
-      concurrency: parseInt(values.concurrency as string, 10),
-      duration: parseInt(values.duration as string, 10),
+      operations,
+      concurrency,
+      duration,
       compare: values.compare as boolean,
       detectLeaks: values["detect-leaks"] as boolean,
       allConfigs: values["all-configs"] as boolean,

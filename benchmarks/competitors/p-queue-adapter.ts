@@ -122,10 +122,20 @@ class LazyPQueueAdapter implements CompetitorAdapter {
  */
 export async function isPQueueAvailable(): Promise<boolean> {
   try {
-    await importPQueue();
+    await import("p-queue");
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // Only return false for "module not found" errors
+    // Re-throw other errors (e.g., syntax errors in the module)
+    if (
+      error instanceof Error &&
+      (error.message.includes("Cannot find") ||
+        error.message.includes("ERR_MODULE_NOT_FOUND") ||
+        (error as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND")
+    ) {
+      return false;
+    }
+    throw error;
   }
 }
 

@@ -90,11 +90,22 @@ function parseCliArgs(): CliOptions {
       process.exit(0);
     }
 
+    const operations = parseInt(values.operations as string, 10);
+    const concurrency = parseInt(values.concurrency as string, 10);
+
+    // Validate parsed numbers
+    if (isNaN(operations) || operations <= 0) {
+      throw new Error(`Invalid operations value: ${values.operations}`);
+    }
+    if (isNaN(concurrency) || concurrency <= 0) {
+      throw new Error(`Invalid concurrency value: ${values.concurrency}`);
+    }
+
     return {
       real: values.real as boolean,
       url: values.url as string,
-      operations: parseInt(values.operations as string, 10),
-      concurrency: parseInt(values.concurrency as string, 10),
+      operations,
+      concurrency,
       config: (values.config as string) || null,
     };
   } catch (error) {

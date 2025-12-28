@@ -88,7 +88,8 @@ export async function runSustainedLoadTest(
   let lastReportTime = testStart;
   let intervalIndex = 0;
 
-  const pending: Promise<void>[] = [];
+  // Use Set for O(1) removal without race conditions
+  const pending = new Set<Promise<void>>();
   const intervalMs = 1000 / opts.targetOpsPerSecond;
   let nextSubmitTime = testStart;
 
@@ -150,11 +151,10 @@ export async function runSustainedLoadTest(
           totalErrors++;
         })
         .finally(() => {
-          const idx = pending.indexOf(promise);
-          if (idx !== -1) pending.splice(idx, 1);
+          pending.delete(promise);
         });
 
-      pending.push(promise);
+      pending.add(promise);
       nextSubmitTime += intervalMs;
 
       // Catch up if we're behind
@@ -164,8 +164,8 @@ export async function runSustainedLoadTest(
     }
 
     // Prevent queue from growing unboundedly
-    if (pending.length > opts.concurrency * 10) {
-      await Promise.race(pending);
+    if (pending.size > opts.concurrency * 10) {
+      await Promise.race([...pending]);
     }
 
     // Small yield to prevent blocking
@@ -173,7 +173,7 @@ export async function runSustainedLoadTest(
   }
 
   // Wait for remaining tasks
-  await Promise.all(pending);
+  await Promise.all([...pending]);
   limiter.clear();
 
   memoryTracker.takeSnapshot();

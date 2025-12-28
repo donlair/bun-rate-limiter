@@ -5,7 +5,7 @@
 
 import { RateLimiter } from "../../src/index.js";
 import type { BenchmarkDefinition } from "../lib/runner.js";
-import { now, delay, forceGC } from "../lib/utils.js";
+import { now, delay } from "../lib/utils.js";
 import type { RateLimiterConfig } from "../configs/types.js";
 import { Histogram } from "../lib/metrics.js";
 
@@ -132,8 +132,8 @@ export async function analyzeBurstBehavior(
 
       const promise = limiter
         .add(async () => {
-          const startTime = now();
-          const latency = startTime - taskAddTime;
+          const taskStartTime = now();
+          const latency = taskStartTime - taskAddTime;
           burstLatencies.push(latency);
           allLatencies.add(latency);
 
@@ -177,7 +177,9 @@ export async function analyzeBurstBehavior(
       firstCompletionMs: (firstCompletion ?? burstStartTime) - startTime,
       lastCompletionMs: lastCompletion - startTime,
       avgLatencyMs:
-        burstLatencies.reduce((a, b) => a + b, 0) / burstLatencies.length,
+        burstLatencies.length > 0
+          ? burstLatencies.reduce((a, b) => a + b, 0) / burstLatencies.length
+          : 0,
       maxQueueSize,
     });
 
@@ -353,7 +355,8 @@ export async function measureConcurrentBursts(
         })
         .then(() => {
           const latency = now() - taskStart;
-          const client = clientResults.get(clientId)!;
+          const client = clientResults.get(clientId);
+          if (!client) throw new Error(`Unknown client: ${clientId}`);
           client.completed++;
           client.latencies.push(latency);
         })

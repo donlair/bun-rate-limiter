@@ -45,6 +45,7 @@ export class MemoryTracker {
   private snapshots: MemorySnapshot[] = [];
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private isTracking = false;
+  private snapshotErrors = 0;
 
   constructor(options: MemoryTrackerOptions = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
@@ -81,8 +82,15 @@ export class MemoryTracker {
     this.intervalId = setInterval(() => {
       try {
         this.takeSnapshot();
-      } catch {
-        // Snapshot failures shouldn't crash the tracker
+      } catch (error) {
+        // Snapshot failures shouldn't crash the tracker, but log first few
+        this.snapshotErrors++;
+        if (this.snapshotErrors <= 3) {
+          console.warn(
+            "[memory-tracker] Snapshot failed:",
+            error instanceof Error ? error.message : error
+          );
+        }
       }
     }, this.options.snapshotIntervalMs);
   }
@@ -206,9 +214,23 @@ export async function checkForMemoryLeaks(
     delayBetweenIterationsMs = 10,
   } = options;
 
-  // Warmup
+  // Warmup with error handling
+  let warmupErrors = 0;
   for (let i = 0; i < warmupIterations; i++) {
-    await fn();
+    try {
+      await fn();
+    } catch (error) {
+      warmupErrors++;
+      if (warmupErrors <= 3) {
+        console.warn(
+          `[checkForMemoryLeaks warmup] Iteration ${i} failed:`,
+          error instanceof Error ? error.message : error
+        );
+      }
+    }
+  }
+  if (warmupErrors > 3) {
+    console.warn(`[checkForMemoryLeaks warmup] ... and ${warmupErrors - 3} more errors`);
   }
 
   forceGC();

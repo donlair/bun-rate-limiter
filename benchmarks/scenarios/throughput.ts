@@ -68,7 +68,7 @@ export function createThroughputBenchmarks(
       },
       options: {
         operations: opts.operations,
-        concurrency: Math.min(concurrency * 2, 200), // Allow some queuing pressure
+        concurrency: Math.min(concurrency * 2, 200), // Benchmark runner concurrency (higher than limiter to create backpressure)
         showProgress: true,
         progressLabel: `${config.name} (c=${concurrency})`,
       },
@@ -164,32 +164,30 @@ export async function findMaxThroughput(
 
     const startTime = performance.now();
     let operations = 0;
-    const pending: Promise<void>[] = [];
+    // Use Set for O(1) removal without race conditions
+    const pending = new Set<Promise<void>>();
 
     while (performance.now() - startTime < testDurationMs) {
       // Keep queue filled
-      while (pending.length < concurrency * 2) {
+      while (pending.size < concurrency * 2) {
         const promise = limiter
           .add(async () => {
             await simulateWork(workload);
           })
           .then(() => {
             operations++;
-            const idx = pending.indexOf(promise);
-            if (idx !== -1) pending.splice(idx, 1);
           })
-          .catch(() => {
-            const idx = pending.indexOf(promise);
-            if (idx !== -1) pending.splice(idx, 1);
+          .finally(() => {
+            pending.delete(promise);
           });
-        pending.push(promise);
+        pending.add(promise);
       }
 
-      await Promise.race(pending);
+      await Promise.race([...pending]);
     }
 
     // Drain remaining
-    await Promise.all(pending);
+    await Promise.all([...pending]);
     limiter.clear();
 
     const elapsed = performance.now() - startTime;

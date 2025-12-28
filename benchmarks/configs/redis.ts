@@ -229,6 +229,7 @@ export function createMockRedisClient(): IRedisClient {
           return "abc123";
         }
         default:
+          console.warn(`[mock-redis] Unhandled command: ${cmd}`);
           return null;
       }
     },

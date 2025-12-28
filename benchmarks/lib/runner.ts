@@ -155,8 +155,8 @@ export async function runBenchmark(
       }
     };
 
-    // Execute with concurrency
-    const pending: Promise<void>[] = [];
+    // Execute with concurrency using Set for O(1) removal without race conditions
+    const pending = new Set<Promise<void>>();
     let nextIndex = 0;
 
     while (
@@ -165,26 +165,24 @@ export async function runBenchmark(
     ) {
       // Fill up to concurrency limit
       while (
-        pending.length < options.concurrency &&
+        pending.size < options.concurrency &&
         nextIndex < options.operations
       ) {
         const index = nextIndex++;
-        const promise = runOperation(index).then(() => {
-          // Remove from pending when done
-          const idx = pending.indexOf(promise);
-          if (idx !== -1) pending.splice(idx, 1);
+        const promise = runOperation(index).finally(() => {
+          pending.delete(promise);
         });
-        pending.push(promise);
+        pending.add(promise);
       }
 
       // Wait for at least one to complete
-      if (pending.length >= options.concurrency) {
-        await Promise.race(pending);
+      if (pending.size >= options.concurrency) {
+        await Promise.race([...pending]);
       }
     }
 
     // Wait for remaining operations
-    await Promise.all(pending);
+    await Promise.all([...pending]);
 
     // Final progress update
     if (options.showProgress) {
@@ -286,22 +284,36 @@ export async function measureThroughput(
     concurrency = 1,
   } = options;
 
-  // Warmup
+  // Warmup with error handling
+  let warmupErrors = 0;
   for (let i = 0; i < warmupOperations; i++) {
-    await fn();
+    try {
+      await fn();
+    } catch (error) {
+      warmupErrors++;
+      if (warmupErrors <= 3) {
+        console.warn(
+          `  [measureThroughput warmup] Operation ${i} failed:`,
+          error instanceof Error ? error.message : error
+        );
+      }
+    }
+  }
+  if (warmupErrors > 3) {
+    console.warn(`  [measureThroughput warmup] ... and ${warmupErrors - 3} more errors`);
   }
 
   forceGC();
 
   const startTime = performance.now();
 
-  // Run with concurrency
-  const pending: Promise<void>[] = [];
+  // Run with concurrency using Set for O(1) removal without race conditions
+  const pending = new Set<Promise<void>>();
   let completed = 0;
   let errorCount = 0;
 
   while (completed + errorCount < operations) {
-    while (pending.length < concurrency && completed + errorCount + pending.length < operations) {
+    while (pending.size < concurrency && completed + errorCount + pending.size < operations) {
       const promise = fn()
         .then(() => {
           completed++;
@@ -310,18 +322,17 @@ export async function measureThroughput(
           errorCount++;
         })
         .finally(() => {
-          const idx = pending.indexOf(promise);
-          if (idx !== -1) pending.splice(idx, 1);
+          pending.delete(promise);
         });
-      pending.push(promise);
+      pending.add(promise);
     }
 
-    if (pending.length > 0) {
-      await Promise.race(pending);
+    if (pending.size > 0) {
+      await Promise.race([...pending]);
     }
   }
 
-  await Promise.all(pending);
+  await Promise.all([...pending]);
 
   const totalTimeMs = performance.now() - startTime;
   const opsPerSecond = (completed / totalTimeMs) * 1000;

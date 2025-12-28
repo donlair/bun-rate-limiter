@@ -8,15 +8,27 @@
 import type { CompetitorAdapter, CompetitorConfig } from "../configs/types.js";
 
 /**
+ * Interface for p-queue instance (subset used by adapter)
+ */
+interface PQueueInterface {
+  add<T>(fn: () => Promise<T>): Promise<T>;
+  clear(): void;
+  readonly size: number;
+  readonly pending: number;
+}
+
+/**
  * Dynamic import of p-queue (must be installed separately)
  */
 async function importPQueue(): Promise<typeof import("p-queue")> {
   try {
     return await import("p-queue");
-  } catch {
-    throw new Error(
-      "p-queue is not installed. Run: npm install p-queue (or bun add p-queue)"
+  } catch (originalError) {
+    const error = new Error(
+      "p-queue is not installed or failed to load. Run: npm install p-queue (or bun add p-queue)"
     );
+    error.cause = originalError;
+    throw error;
   }
 }
 
@@ -24,9 +36,9 @@ async function importPQueue(): Promise<typeof import("p-queue")> {
  * p-queue adapter implementing CompetitorAdapter interface
  */
 export class PQueueAdapter implements CompetitorAdapter {
-  private queue: any; // p-queue instance
+  private queue: PQueueInterface;
 
-  constructor(queue: any) {
+  constructor(queue: PQueueInterface) {
     this.queue = queue;
   }
 

@@ -190,6 +190,7 @@ export async function analyzeLatencyDistribution(
           console.warn(`Latency analysis task failed:`, err instanceof Error ? err.message : err);
         }
       })
+      // Note: Error summary logged after loop completes
       .finally(() => {
         completed.add(promise);
       });
@@ -210,6 +211,11 @@ export async function analyzeLatencyDistribution(
 
   await Promise.all(pending);
   limiter.clear();
+
+  // Log error summary if there were many errors
+  if (errorCount > 3) {
+    console.warn(`Latency analysis: ${errorCount} total errors`);
+  }
 
   const getPercentiles = (h: Histogram) => ({
     p50: h.percentile(50),
@@ -264,15 +270,16 @@ export async function measureLatencyUnderLoad(
   let completed = 0;
   let dropped = 0;
 
-  const pending: Promise<void>[] = [];
+  // Use Set for O(1) removal without race conditions
+  const pending = new Set<Promise<void>>();
 
   while (now() - startTime < durationMs) {
     const taskAddTime = now();
 
     const promise = limiter
       .add(async () => {
-        const startTime = now();
-        histogram.add(startTime - taskAddTime);
+        const taskStartTime = now();
+        histogram.add(taskStartTime - taskAddTime);
         await delay(0);
       })
       .then(() => {
@@ -282,11 +289,10 @@ export async function measureLatencyUnderLoad(
         dropped++;
       })
       .finally(() => {
-        const idx = pending.indexOf(promise);
-        if (idx !== -1) pending.splice(idx, 1);
+        pending.delete(promise);
       });
 
-    pending.push(promise);
+    pending.add(promise);
     submitted++;
 
     // Rate limiting for submission

@@ -413,6 +413,30 @@ describe('external cancellation listener lifetime', () => {
     expect(job.status).toBe('cancelled');
   });
 
+  test('manual cancellation detaches timeout listeners before an uncooperative task settles', async () => {
+    const controller = new AbortController();
+    const unrelated = () => {};
+    controller.signal.addEventListener('abort', unrelated);
+    let finish!: () => void;
+    const task = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const job = new Job(() => task, { signal: controller.signal, timeout: 60_000 });
+    const result = job.promise.catch((error: unknown) => error);
+    const execution = job.execute().catch((error: unknown) => error);
+    try {
+      job.cancel();
+      expect(job.status).toBe('cancelled');
+      expect(controller.signal.aborted).toBe(false);
+      expect(getEventListeners(controller.signal, 'abort')).toEqual([unrelated]);
+    } finally {
+      finish();
+      expect(await execution).toHaveProperty('name', 'AbortError');
+      expect(await result).toHaveProperty('name', 'AbortError');
+    }
+    expect(getEventListeners(controller.signal, 'abort')).toEqual([unrelated]);
+  });
+
   test('releases both listeners after a timeout, even when a task ignores cancellation', async () => {
     const controller = new AbortController();
     const job = new Job(() => new Promise<never>(() => {}), {

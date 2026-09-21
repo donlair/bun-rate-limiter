@@ -38,6 +38,8 @@ export class Job<T> {
   private readonly abortController: AbortController;
   /** External abort signal provided by user */
   private readonly externalSignal?: AbortSignal;
+  /** Keep a removable reference so a shared signal cannot retain settled jobs. */
+  private readonly onExternalAbort = () => this.cancel();
   /** Promise resolver function */
   private resolvePromise!: (value: T) => void;
   /** Promise rejector function */
@@ -68,9 +70,7 @@ export class Job<T> {
     if (this.externalSignal?.aborted) {
       this._status = 'cancelled';
     } else {
-      this.externalSignal?.addEventListener('abort', () => {
-        this.cancel();
-      });
+      this.externalSignal?.addEventListener('abort', this.onExternalAbort, { once: true });
     }
   }
 
@@ -90,6 +90,7 @@ export class Job<T> {
 
     const wasPending = this._status === 'pending';
     this._status = 'cancelled';
+    this.externalSignal?.removeEventListener('abort', this.onExternalAbort);
     this.abortController.abort();
 
     if (wasPending) {
@@ -117,6 +118,7 @@ export class Job<T> {
       : this.abortController.signal;
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let onTimeoutAbort: (() => void) | undefined;
 
     try {
       let result: T;
@@ -134,6 +136,7 @@ export class Job<T> {
               const onAbort = () => {
                 reject(new DOMException('Job was cancelled', 'AbortError'));
               };
+              onTimeoutAbort = onAbort;
               if (this.externalSignal?.aborted) {
                 onAbort();
               } else {
@@ -168,6 +171,10 @@ export class Job<T> {
       this.rejectPromise(error);
       throw error;
     } finally {
+      this.externalSignal?.removeEventListener('abort', this.onExternalAbort);
+      if (onTimeoutAbort) {
+        this.externalSignal?.removeEventListener('abort', onTimeoutAbort);
+      }
       if (timeoutId) {
         clearTimeout(timeoutId);
       }

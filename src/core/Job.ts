@@ -38,6 +38,13 @@ export class Job<T> {
   private readonly abortController: AbortController;
   /** External abort signal provided by user */
   private readonly externalSignal?: AbortSignal;
+  /** Keep a removable reference so a shared signal cannot retain settled jobs. */
+  private readonly onExternalAbort = () => {
+    // Preserve prompt external cancellation before cancel() detaches both listeners.
+    this.onTimeoutAbort?.();
+    this.cancel();
+  };
+  private onTimeoutAbort?: () => void;
   /** Promise resolver function */
   private resolvePromise!: (value: T) => void;
   /** Promise rejector function */
@@ -68,9 +75,7 @@ export class Job<T> {
     if (this.externalSignal?.aborted) {
       this._status = 'cancelled';
     } else {
-      this.externalSignal?.addEventListener('abort', () => {
-        this.cancel();
-      });
+      this.externalSignal?.addEventListener('abort', this.onExternalAbort, { once: true });
     }
   }
 
@@ -90,11 +95,20 @@ export class Job<T> {
 
     const wasPending = this._status === 'pending';
     this._status = 'cancelled';
+    this.detachExternalAbortListeners();
     this.abortController.abort();
 
     if (wasPending) {
       const error = new DOMException('Job was cancelled', 'AbortError');
       this.rejectPromise(error);
+    }
+  }
+
+  private detachExternalAbortListeners(): void {
+    this.externalSignal?.removeEventListener('abort', this.onExternalAbort);
+    if (this.onTimeoutAbort) {
+      this.externalSignal?.removeEventListener('abort', this.onTimeoutAbort);
+      this.onTimeoutAbort = undefined;
     }
   }
 
@@ -134,6 +148,7 @@ export class Job<T> {
               const onAbort = () => {
                 reject(new DOMException('Job was cancelled', 'AbortError'));
               };
+              this.onTimeoutAbort = onAbort;
               if (this.externalSignal?.aborted) {
                 onAbort();
               } else {
@@ -168,6 +183,7 @@ export class Job<T> {
       this.rejectPromise(error);
       throw error;
     } finally {
+      this.detachExternalAbortListeners();
       if (timeoutId) {
         clearTimeout(timeoutId);
       }

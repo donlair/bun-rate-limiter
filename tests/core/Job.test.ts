@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { getEventListeners } from 'node:events';
 import { TimeoutError } from '../../src/core/errors.ts';
 import { Job } from '../../src/core/Job.ts';
 
@@ -361,5 +362,124 @@ describe('Job', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(job.status).toBe('completed'); // Still completed, not failed
     });
+  });
+});
+
+describe('external cancellation listener lifetime', () => {
+  test.each([
+    undefined,
+    60_000,
+  ])('releases listeners after repeated success (timeout=%s)', async (timeout) => {
+    const controller = new AbortController();
+    for (let index = 0; index < 80; index++) {
+      const job = new Job(async () => ({ index, body: new Uint8Array(1024) }), {
+        signal: controller.signal,
+        timeout,
+      });
+      expect((await job.execute()).index).toBe(index);
+      expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+    }
+  });
+
+  test.each([
+    undefined,
+    60_000,
+  ])('releases listeners after task failure (timeout=%s)', async (timeout) => {
+    const controller = new AbortController();
+    const job = new Job(
+      async () => {
+        throw new Error('task failed');
+      },
+      {
+        signal: controller.signal,
+        timeout,
+      },
+    );
+    const result = job.promise.catch((error: unknown) => error);
+    await expect(job.execute()).rejects.toThrow('task failed');
+    await result;
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+  });
+
+  test('releases the external listener when a pending job is manually cancelled', async () => {
+    const controller = new AbortController();
+    const unrelated = () => {};
+    controller.signal.addEventListener('abort', unrelated);
+    const job = new Job(async () => 'unused', { signal: controller.signal });
+    const result = job.promise.catch((error: unknown) => error);
+    job.cancel();
+    expect((await result) instanceof DOMException).toBe(true);
+    expect(getEventListeners(controller.signal, 'abort')).toEqual([unrelated]);
+    expect(job.status).toBe('cancelled');
+  });
+
+  test('manual cancellation detaches timeout listeners before an uncooperative task settles', async () => {
+    const controller = new AbortController();
+    const unrelated = () => {};
+    controller.signal.addEventListener('abort', unrelated);
+    let finish!: () => void;
+    const task = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const job = new Job(() => task, { signal: controller.signal, timeout: 60_000 });
+    const result = job.promise.catch((error: unknown) => error);
+    const execution = job.execute().catch((error: unknown) => error);
+    try {
+      job.cancel();
+      expect(job.status).toBe('cancelled');
+      expect(controller.signal.aborted).toBe(false);
+      expect(getEventListeners(controller.signal, 'abort')).toEqual([unrelated]);
+    } finally {
+      finish();
+      expect(await execution).toHaveProperty('name', 'AbortError');
+      expect(await result).toHaveProperty('name', 'AbortError');
+    }
+    expect(getEventListeners(controller.signal, 'abort')).toEqual([unrelated]);
+  });
+
+  test('releases both listeners after a timeout, even when a task ignores cancellation', async () => {
+    const controller = new AbortController();
+    const job = new Job(() => new Promise<never>(() => {}), {
+      signal: controller.signal,
+      timeout: 5,
+    });
+    const result = job.promise.catch((error: unknown) => error);
+    await expect(job.execute()).rejects.toBeInstanceOf(TimeoutError);
+    await result;
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+  });
+
+  test('retains prompt external cancellation for a running timeout task', async () => {
+    const controller = new AbortController();
+    const job = new Job(() => new Promise<never>(() => {}), {
+      signal: controller.signal,
+      timeout: 60_000,
+    });
+    const result = job.promise.catch((error: unknown) => error);
+    const execution = job.execute();
+    void execution.catch(() => {});
+    controller.abort();
+    await expect(execution).rejects.toHaveProperty('name', 'AbortError');
+    await result;
+    expect(job.status).toBe('cancelled');
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+  });
+
+  test('releases the listener after a running cooperative task is cancelled without a timeout', async () => {
+    const controller = new AbortController();
+    const job = new Job(
+      ({ signal }) =>
+        new Promise<void>((resolve) => {
+          signal?.addEventListener('abort', () => resolve(), { once: true });
+        }),
+      { signal: controller.signal },
+    );
+    const result = job.promise.catch((error: unknown) => error);
+    const execution = job.execute();
+    void execution.catch(() => {});
+    controller.abort();
+    await expect(execution).rejects.toHaveProperty('name', 'AbortError');
+    await result;
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
   });
 });
